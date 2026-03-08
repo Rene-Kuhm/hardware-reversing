@@ -1,0 +1,161 @@
+# =============================================================================
+# RGB Fusion — Example Configuration
+# /etc/rgb-fusion/config.toml
+# =============================================================================
+#
+# Each [[zone]] section controls one LED zone on the motherboard.
+# Zones are numbered 0-7 (actual count depends on your board).
+#
+# Common zone layout for Z790/Z690/B760 boards with IT8295:
+#   Zone 0 — ARGB header 1 (front panel strip)
+#   Zone 1 — ARGB header 2 (rear strip / case)
+#   Zone 2 — On-board RGB strip (near PCIe area)
+#   Zone 3 — On-board RGB strip (near memory slots)
+#   Zone 4 — CPU socket area lighting
+#   Zone 5-7 — Board-specific (check rgb-fusion list)
+#
+# -----------------------------------------------------------------------------
+# FIELD REFERENCE
+# -----------------------------------------------------------------------------
+#
+# zone        int     Zone index, 0-7
+# mode        string  Effect mode name (see list below)
+# color       string  Color as RRGGBB or 00RRGGBB hex (GCC XML format)
+# speed       int     Animation speed, 0 (slowest) to 9 (fastest)
+# brightness  int     LED brightness, 0 (off) to 9 (maximum)
+# led_count   int     Number of LEDs in the ARGB strip (default: 60)
+#                     Only affects ARGB (addressable) zones.
+#
+# -----------------------------------------------------------------------------
+# AVAILABLE MODES
+# -----------------------------------------------------------------------------
+#
+# static / still    — Solid color, no animation
+# breath / breathing — Fade in and out (one color)
+# beat              — Pulse synced to a regular beat pattern
+# flash             — Quick flash on/off
+# ripple            — Ripple effect from center outward
+# random            — Random color selection
+# colorcycle / cycle — Smooth hue rotation through the color wheel
+# wave              — Colors sweep across the strip like a wave
+# rainbow           — Full rainbow gradient animating across the strip
+# off               — All LEDs off
+#
+# Speed and brightness have no effect for "off".
+# For "colorcycle", "wave", and "rainbow" the color field is ignored
+# (the effect generates its own colors), but it is still required.
+#
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Zone 0 — ARGB Header 1 — Breathing red
+# -----------------------------------------------------------------------------
+[[zone]]
+zone        = 0
+mode        = "breath"
+color       = "FF0000"      # Red
+speed       = 5             # Medium speed (~800 ms period)
+brightness  = 9             # Full brightness
+led_count   = 60            # 60-LED ARGB strip
+
+
+# -----------------------------------------------------------------------------
+# Zone 1 — ARGB Header 2 — Static cyan
+# -----------------------------------------------------------------------------
+[[zone]]
+zone        = 1
+mode        = "static"
+color       = "00FFFF"      # Cyan
+speed       = 5
+brightness  = 8
+led_count   = 30            # 30-LED strip
+
+
+# -----------------------------------------------------------------------------
+# Zone 2 — On-board strip — Rainbow wave
+# (color is ignored for rainbow mode)
+# -----------------------------------------------------------------------------
+[[zone]]
+zone        = 2
+mode        = "rainbow"
+color       = "FFFFFF"      # ignored — rainbow generates its own colors
+speed       = 6
+brightness  = 9
+led_count   = 60
+
+
+# -----------------------------------------------------------------------------
+# Zone 3 — Near memory slots — Color cycle
+# -----------------------------------------------------------------------------
+[[zone]]
+zone        = 3
+mode        = "colorcycle"
+color       = "FFFFFF"      # ignored
+speed       = 4
+brightness  = 7
+led_count   = 20
+
+
+# -----------------------------------------------------------------------------
+# Zone 4 — CPU area — Static white
+# -----------------------------------------------------------------------------
+[[zone]]
+zone        = 4
+mode        = "static"
+color       = "FFFFFF"      # White
+speed       = 5
+brightness  = 6
+led_count   = 12
+
+
+# -----------------------------------------------------------------------------
+# Zone 5 — Flash orange (heat alert aesthetic)
+# -----------------------------------------------------------------------------
+[[zone]]
+zone        = 5
+mode        = "flash"
+color       = "FF6600"      # Orange
+speed       = 7             # Fast flash
+brightness  = 9
+led_count   = 16
+
+
+# -----------------------------------------------------------------------------
+# Zone 6 — Beat pulse — Deep blue
+# -----------------------------------------------------------------------------
+[[zone]]
+zone        = 6
+mode        = "beat"
+color       = "0033FF"      # Deep blue
+speed       = 5
+brightness  = 8
+led_count   = 30
+
+
+# -----------------------------------------------------------------------------
+# Zone 7 — OFF
+# (Disable a zone by setting mode = "off")
+# -----------------------------------------------------------------------------
+[[zone]]
+zone        = 7
+mode        = "off"
+color       = "000000"
+speed       = 0
+brightness  = 0
+led_count   = 1
+
+
+# =============================================================================
+# QUICK PRESETS (comment out the [[zone]] sections above and uncomment one
+# of these blocks to apply a preset uniformly to all zones)
+# =============================================================================
+
+# PRESET: All red static
+# Run:  rgb-fusion set-all --mode static --color FF0000
+#
+# PRESET: All rainbow
+# Run:  rgb-fusion set-all --mode rainbow --color FFFFFF --speed 5 --brightness 9
+#
+# PRESET: All off
+# Run:  rgb-fusion set-all --mode off --color 000000 --speed 0 --brightness 0
