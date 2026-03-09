@@ -524,27 +524,26 @@ def build_report(
 # ---------------------------------------------------------------------------
 
 class HidDevice:
-    """Wrapper around hid.device with reconnection logic."""
+    """Wrapper around hid.Device with reconnection logic."""
 
     def __init__(self, vid: int, pid: int, reconnect_delay: float = 5.0):
         self.vid             = vid
         self.pid             = pid
         self.reconnect_delay = reconnect_delay
-        self._dev: Optional[hid.device] = None
+        self._dev: Optional[hid.Device] = None
 
     def _open(self) -> bool:
         try:
-            dev = hid.device()
-            dev.open(self.vid, self.pid)
-            dev.set_nonblocking(True)
+            dev = hid.Device(self.vid, self.pid)
+            dev.nonblocking = True
             self._dev = dev
             log.info(
                 "Opened HID device %04X:%04X – %s",
                 self.vid, self.pid,
-                dev.get_manufacturer_string() or "unknown manufacturer",
+                getattr(dev, "manufacturer", None) or "unknown manufacturer",
             )
             return True
-        except OSError as exc:
+        except Exception as exc:
             log.debug("Cannot open HID device: %s", exc)
             self._dev = None
             return False
