@@ -33,11 +33,12 @@ log = logging.getLogger("pc-monitor")
 # ---------------------------------------------------------------------------
 # Device constants
 # ---------------------------------------------------------------------------
-VENDOR_ID  = 0x3554
-PRODUCT_ID = 0xFA09
-REPORT_ID  = 0x00
-REPORT_LEN = 64       # bytes including report ID prefix
-UPDATE_MS  = 200      # milliseconds between sends
+VENDOR_ID        = 0x3554
+PRODUCT_ID       = 0xFA09
+USAGE_PAGE_DISPLAY = 0xFF02  # vendor-specific page used by the display interface
+REPORT_ID        = 0x00
+REPORT_LEN       = 64       # bytes including report ID prefix
+UPDATE_MS        = 200      # milliseconds between sends
 
 # HID report header bytes
 HEADER_B1  = 0x01
@@ -534,7 +535,23 @@ class HidDevice:
 
     def _open(self) -> bool:
         try:
-            dev = hid.Device(self.vid, self.pid)
+            # Enumerate to find the display interface (vendor-specific usage page 0xFF02).
+            # The device also exposes a keyboard/mouse interface on the same VID:PID;
+            # we must skip that and open the display-control interface by path.
+            path = None
+            for info in hid.enumerate(self.vid, self.pid):
+                if info.get("usage_page") == USAGE_PAGE_DISPLAY:
+                    path = info["path"]
+                    break
+
+            if path is None:
+                # Fallback: open first matching device
+                log.debug("Display interface (usage_page=0xFF02) not found, trying first match")
+                dev = hid.Device(self.vid, self.pid)
+            else:
+                log.debug("Opening display interface at %s", path)
+                dev = hid.Device(path=path)
+
             dev.nonblocking = True
             self._dev = dev
             log.info(
