@@ -561,12 +561,14 @@ class HidDevice:
         if self._dev is None:
             return False
         try:
-            # hid.device.write() prepends the report ID automatically
-            # if the device uses report IDs; the report already includes
-            # byte[0] = 0x00, so we pass the full buffer.
             written = self._dev.write(report)
-            return written >= 0
-        except OSError as exc:
+            if written < 0:
+                log.warning("HID write returned %d – will reconnect", written)
+                self.close()
+                return False
+            log.debug("HID write ok: %d bytes, report: %s", written, report.hex(" "))
+            return True
+        except Exception as exc:
             log.warning("HID write error (%s) – will reconnect", exc)
             self.close()
             return False
