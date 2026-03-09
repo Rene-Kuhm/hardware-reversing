@@ -99,15 +99,20 @@
                 RUN+="${pkgs.coreutils}/bin/chgrp pc-monitor /sys%p/energy_uj"
             '';
 
-            # -- Dedicated system group so the daemon doesn't run as root -------
+            # -- Static user and group for the daemon ---------------------------
             users.groups.pc-monitor = {};
+            users.users.pc-monitor = {
+              isSystemUser = true;
+              group        = "pc-monitor";
+              extraGroups  = [ "video" ];
+              description  = "PC Monitor daemon user";
+            };
 
             # -- systemd service -----------------------------------------------
             systemd.services.pc-monitor = {
               description   = "PC Monitor HID display daemon";
               wantedBy      = [ "multi-user.target" ];
               after         = [ "systemd-udev-settle.service" "multi-user.target" ];
-              # Restart automatically if the process exits
               serviceConfig = {
                 ExecStart = lib.concatStringsSep " " (
                   [ "${monitorPackage}/bin/pc-monitor" ]
@@ -128,30 +133,23 @@
                   ]
                 );
 
-                Restart         = "on-failure";
-                RestartSec      = "5s";
+                Restart    = "on-failure";
+                RestartSec = "5s";
 
-                # Run as a dedicated user with the pc-monitor group
-                DynamicUser     = true;
-                Group           = "pc-monitor";
-                # Supplementary groups for sensor access
-                SupplementaryGroups = [ "video" ];
+                User  = "pc-monitor";
+                Group = "pc-monitor";
 
                 # -- Hardening --
                 PrivateTmp          = true;
                 ProtectSystem       = "strict";
                 ProtectHome         = true;
                 NoNewPrivileges     = true;
-                # Allow reading hwmon / proc / sys
                 ReadOnlyPaths       = [ "/sys" "/proc" ];
-                # CAP_DAC_READ_SEARCH lets us read protected sysfs files (e.g. RAPL)
-                # without running as root.  Drop everything else.
                 CapabilityBoundingSet = [ "CAP_DAC_READ_SEARCH" ];
                 AmbientCapabilities   = [ "CAP_DAC_READ_SEARCH" ];
 
-                # Resource limits
-                LimitNOFILE  = 256;
-                Nice         = 10;
+                LimitNOFILE = 256;
+                Nice        = 10;
               };
             };
 
