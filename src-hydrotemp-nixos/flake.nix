@@ -83,7 +83,7 @@
           # ----------------------------------------------------------------
           config = lib.mkIf cfg.enable {
 
-            # -- udev rule: give the pc-monitor group rw access to the device --
+            # -- udev rules: HID device access + RAPL powercap --
             services.udev.extraRules = ''
               # PC Monitor USB HID display (VID:3554 PID:FA09)
               SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3554", ATTRS{idProduct}=="fa09", \
@@ -92,20 +92,15 @@
               # Also match the parent USB device
               SUBSYSTEM=="usb", ATTRS{idVendor}=="3554", ATTRS{idProduct}=="fa09", \
                 MODE="0660", GROUP="pc-monitor"
-            '';
 
-            # -- Dedicated system group so the daemon doesn't run as root -------
-            users.groups.pc-monitor = {};
-
-            # -- Allow the service user to read RAPL energy counters ------------
-            # RAPL is readable by root by default; expose it via the service's
-            # supplementary groups or via a udev rule for powercap.
-            services.udev.extraRules = lib.mkAfter ''
               # RAPL powercap – allow pc-monitor group to read energy counters
               SUBSYSTEM=="powercap", ACTION=="add", \
                 RUN+="${pkgs.coreutils}/bin/chmod g+r /sys%p/energy_uj", \
                 RUN+="${pkgs.coreutils}/bin/chgrp pc-monitor /sys%p/energy_uj"
             '';
+
+            # -- Dedicated system group so the daemon doesn't run as root -------
+            users.groups.pc-monitor = {};
 
             # -- systemd service -----------------------------------------------
             systemd.services.pc-monitor = {
