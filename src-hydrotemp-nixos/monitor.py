@@ -36,7 +36,7 @@ log = logging.getLogger("pc-monitor")
 VENDOR_ID        = 0x5131
 PRODUCT_ID       = 0x2007
 REPORT_ID        = 0x00
-REPORT_LEN       = 65       # 1 byte hidapi report-ID prefix + 64 bytes payload
+REPORT_LEN       = 64       # 64 bytes as-is (matches CyUSB raw USB transfer on Windows)
 UPDATE_MS        = 200      # milliseconds between sends
 
 # HID report header bytes
@@ -509,8 +509,6 @@ def build_report(
     send_values[IDX_WC_FAN_RPM] = scale(wc_fan_rpm, mv.wc_fan_rpm)
     send_values[IDX_FAN_RPM]    = scale(fan_rpm,    mv.fan_rpm)
 
-    # REPORT_LEN = 65: byte 0 = hidapi report-ID prefix (0x00, stripped by hidapi)
-    # Bytes 1-64 = actual 64-byte payload sent to device.
     report = bytearray(REPORT_LEN)
     report[0] = REPORT_ID   # 0x00 – "no report ID" placeholder for hidapi
     report[1] = HEADER_B1   # 0x01
