@@ -33,8 +33,8 @@ log = logging.getLogger("pc-monitor")
 # ---------------------------------------------------------------------------
 # Device constants
 # ---------------------------------------------------------------------------
-VENDOR_ID        = 0x5131
-PRODUCT_ID       = 0x2007
+VENDOR_ID        = 0x3554
+PRODUCT_ID       = 0xFA09
 REPORT_ID        = 0x00
 REPORT_LEN       = 65       # 1 byte hidapi report-ID prefix + 64 bytes payload
 UPDATE_MS        = 200      # milliseconds between sends
@@ -536,13 +536,29 @@ class HidDevice:
 
     def _open(self) -> bool:
         try:
-            dev = hid.Device(self.vid, self.pid)
+            # Enumerate all interfaces for this VID/PID and pick the vendor-specific
+            # one (usage_page in the vendor range 0xFF00-0xFFFF), which is the
+            # monitoring interface (MI_01 COL01).  The first interface (MI_00) is a
+            # keyboard and rejects output reports with EPIPE.
+            path: Optional[bytes] = None
+            for info in hid.enumerate(self.vid, self.pid):
+                if 0xFF00 <= info["usage_page"] <= 0xFFFF:
+                    path = info["path"]
+                    break
+
+            if path is None:
+                log.debug("No vendor-specific HID interface found for %04X:%04X", self.vid, self.pid)
+                self._dev = None
+                return False
+
+            dev = hid.Device(path=path)
             dev.nonblocking = True
             self._dev = dev
             log.info(
-                "Opened HID device %04X:%04X – %s",
+                "Opened HID device %04X:%04X – %s (path=%s)",
                 self.vid, self.pid,
                 getattr(dev, "manufacturer", None) or "unknown manufacturer",
+                path.decode(errors="replace"),
             )
             return True
         except Exception as exc:

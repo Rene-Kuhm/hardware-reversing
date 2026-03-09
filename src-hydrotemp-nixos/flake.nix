@@ -85,12 +85,12 @@
 
             # -- udev rules: HID device access + RAPL powercap --
             services.udev.extraRules = ''
-              # PC Monitor USB HID display (VID:5131 PID:2007)
-              SUBSYSTEM=="hidraw", ATTRS{idVendor}=="5131", ATTRS{idProduct}=="2007", \
+              # PC Monitor USB HID display (VID:3554 PID:FA09)
+              SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3554", ATTRS{idProduct}=="fa09", \
                 MODE="0660", GROUP="pc-monitor", TAG+="systemd"
 
               # Also match the parent USB device
-              SUBSYSTEM=="usb", ATTRS{idVendor}=="5131", ATTRS{idProduct}=="2007", \
+              SUBSYSTEM=="usb", ATTRS{idVendor}=="3554", ATTRS{idProduct}=="fa09", \
                 MODE="0660", GROUP="pc-monitor"
 
               # RAPL powercap – allow pc-monitor group to read energy counters
