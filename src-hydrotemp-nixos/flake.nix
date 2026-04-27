@@ -1,5 +1,5 @@
 {
-  description = "PC Monitor NixOS – HID display daemon for VID:3554 PID:FA09";
+  description = "PC Monitor NixOS – HID display daemon for VID:5131 PID:2007";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -23,7 +23,7 @@
           # The monitor script is installed as a proper package
           monitorPackage = pkgs.stdenv.mkDerivation {
             pname   = "pc-monitor";
-            version = "1.0.0";
+            version = "2.0.0";
             src     = ./.;
 
             buildInputs = [ pythonEnv ];
@@ -63,19 +63,6 @@
               default = false;
               description = "Log sensor values every cycle (sets log level to DEBUG).";
             };
-
-            # ---- Max-value knobs (matching the original nud_Pic* controls) ----
-            maxCpuTemp  = lib.mkOption { type = lib.types.float; default = 100.0;  description = "CPU temp scale max (°C)."; };
-            maxCpuUsage = lib.mkOption { type = lib.types.float; default = 100.0;  description = "CPU usage scale max (%)."; };
-            maxCpuPower = lib.mkOption { type = lib.types.float; default = 253.0;  description = "CPU power scale max (W)."; };
-            maxCpuFreq  = lib.mkOption { type = lib.types.float; default = 5600.0; description = "CPU freq scale max (MHz)."; };
-            maxCpuVolt  = lib.mkOption { type = lib.types.float; default = 1.5;    description = "CPU voltage scale max (V)."; };
-            maxGpuTemp  = lib.mkOption { type = lib.types.float; default = 110.0;  description = "GPU temp scale max (°C)."; };
-            maxGpuUsage = lib.mkOption { type = lib.types.float; default = 100.0;  description = "GPU usage scale max (%)."; };
-            maxGpuPower = lib.mkOption { type = lib.types.float; default = 160.0;  description = "GPU power scale max (W)."; };
-            maxGpuFreq  = lib.mkOption { type = lib.types.float; default = 2589.0; description = "GPU freq scale max (MHz)."; };
-            maxWcFan    = lib.mkOption { type = lib.types.float; default = 3000.0; description = "Water-cooling fan RPM scale max."; };
-            maxFan      = lib.mkOption { type = lib.types.float; default = 3000.0; description = "System fan RPM scale max."; };
           };
 
           # ----------------------------------------------------------------
@@ -118,19 +105,6 @@
                   [ "${monitorPackage}/bin/pc-monitor" ]
                   ++ [ "--log-level" cfg.logLevel ]
                   ++ lib.optionals cfg.verbose [ "--verbose" ]
-                  ++ [
-                    "--max-cpu-temp"  (toString cfg.maxCpuTemp)
-                    "--max-cpu-usage" (toString cfg.maxCpuUsage)
-                    "--max-cpu-power" (toString cfg.maxCpuPower)
-                    "--max-cpu-freq"  (toString cfg.maxCpuFreq)
-                    "--max-cpu-volt"  (toString cfg.maxCpuVolt)
-                    "--max-gpu-temp"  (toString cfg.maxGpuTemp)
-                    "--max-gpu-usage" (toString cfg.maxGpuUsage)
-                    "--max-gpu-power" (toString cfg.maxGpuPower)
-                    "--max-gpu-freq"  (toString cfg.maxGpuFreq)
-                    "--max-wc-fan"    (toString cfg.maxWcFan)
-                    "--max-fan"       (toString cfg.maxFan)
-                  ]
                 );
 
                 Restart    = "on-failure";
@@ -175,7 +149,7 @@
 
         monitorPackage = pkgs.stdenv.mkDerivation {
           pname   = "pc-monitor";
-          version = "1.0.0";
+          version = "2.0.0";
           src     = ./.;
 
           buildInputs    = [ pythonEnv ];

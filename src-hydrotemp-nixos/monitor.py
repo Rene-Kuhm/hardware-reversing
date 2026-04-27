@@ -1,10 +1,36 @@
 #!/usr/bin/env python3
 """
 PC Monitor NixOS Daemon
-Sends hardware sensor data to a USB HID display (VID:0x3554, PID:0xFA09).
+Sends hardware sensor data to the USB HID display VID:5131 PID:2007 ("FBB").
 
-Protocol reverse-engineered from "PC Monitor All" .NET application.
-HID report: 64 bytes, sent every 200ms.
+Protocol reverse-engineered from "PC Monitor All" .NET Windows application.
+HID report: 65 bytes, sent every 200ms.
+
+Report layout (65 bytes):
+  [0]       0x00       HID Report ID
+  [1..3]    00 01 02   Fixed header
+  [4]       CPU core temp (°C, direct)
+  [5]       GPU usage (%, direct 0-100)
+  [6]       0x00       GPU power — firmware bug: must be 0
+  [7]       CPU package power (W, direct)
+  [8]       CPU hotspot/package temp (°C, direct)
+  [9]       CPU max-thread usage (%, direct 0-100)
+  [10]      GPU clock MHz ÷ 10
+  [11]      CPU clock MHz ÷ 48
+  [12]      0x01       constant
+  [13]      CPU VID voltage × 100 (e.g. 1.05 V → 105)
+  [14]      GPU temp (°C, direct)
+  [15..18]  0x00       reserved
+  [19]      0x0A       Celsius flag
+  [20]      0x00       reserved
+  [21]      CPU total average usage (%, direct 0-100)
+  [22..23]  CPU fan RPM: high = RPM÷100, low = RPM%100
+  [24..25]  Pump RPM:    high = RPM÷100, low = RPM%100
+  [26..31]  Display config thresholds (fixed defaults)
+  [32]      Rolling counter (~1 per 3 packets)
+  [33]      0x06       constant
+  [34]      0x19       constant
+  [35..64]  0x00       padding
 """
 
 import hid
@@ -16,12 +42,8 @@ import subprocess
 import sys
 import signal
 import argparse
-from dataclasses import dataclass, field
 from typing import Optional
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -30,51 +52,10 @@ logging.basicConfig(
 )
 log = logging.getLogger("pc-monitor")
 
-# ---------------------------------------------------------------------------
-# Device constants
-# ---------------------------------------------------------------------------
-VENDOR_ID        = 0x5131
-PRODUCT_ID       = 0x2007
-REPORT_ID        = 0x00
-REPORT_LEN       = 64       # 64 bytes as-is (matches CyUSB raw USB transfer on Windows)
-UPDATE_MS        = 200      # milliseconds between sends
-
-# HID report header bytes
-HEADER_B1  = 0x01
-HEADER_B2  = 0x02
-
-# SendValueArray indices  → byte offset in report (offset = index + 3)
-IDX_CPU_TEMP   = 0
-IDX_CPU_USAGE  = 1
-IDX_CPU_POWER  = 2
-IDX_CPU_FREQ   = 3
-IDX_CPU_VOLT   = 4
-IDX_GPU_TEMP   = 5
-IDX_GPU_USAGE  = 6
-IDX_GPU_POWER  = 7
-IDX_GPU_FREQ   = 8
-IDX_WC_FAN_RPM = 9
-IDX_FAN_RPM    = 10
-NUM_VALUES     = 11   # indices 0-10 are defined; up to 32 slots exist (bytes 3-35)
-
-
-# ---------------------------------------------------------------------------
-# Configurable max values (matches nud_Pic* controls in the original app)
-# ---------------------------------------------------------------------------
-@dataclass
-class MaxValues:
-    """Upper bounds used for 0-255 scaling.  Tune these for your hardware."""
-    cpu_temp_c:     float = 100.0   # °C
-    cpu_usage_pct:  float = 100.0   # %
-    cpu_power_w:    float = 253.0   # W  (i7-14700F TDP ~253 W peak)
-    cpu_freq_mhz:   float = 5600.0  # MHz (max boost for i7-14700F)
-    cpu_volt_v:     float = 1.5     # V
-    gpu_temp_c:     float = 110.0   # °C (RX 6600 XT throttle limit)
-    gpu_usage_pct:  float = 100.0   # %
-    gpu_power_w:    float = 160.0   # W  (RX 6600 XT TDP 160 W)
-    gpu_freq_mhz:   float = 2589.0  # MHz (RX 6600 XT max boost)
-    wc_fan_rpm:     float = 3000.0  # RPM
-    fan_rpm:        float = 3000.0  # RPM
+VENDOR_ID  = 0x5131
+PRODUCT_ID = 0x2007
+REPORT_LEN = 65
+UPDATE_MS  = 200
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +63,6 @@ class MaxValues:
 # ---------------------------------------------------------------------------
 
 def _read_file(path: str) -> Optional[str]:
-    """Read a sysfs file, return stripped string or None on error."""
     try:
         with open(path, "r") as f:
             return f.read().strip()
@@ -100,72 +80,75 @@ def _read_float(path: str, divisor: float = 1.0) -> Optional[float]:
         return None
 
 
-def _glob_first(pattern: str) -> Optional[str]:
-    results = glob.glob(pattern)
-    return results[0] if results else None
-
-
-# ------------------------------------------------------------------
-# CPU sensors (hwmon / coretemp / powercap)
-# ------------------------------------------------------------------
-
 def _find_hwmon_driver(driver_name: str) -> Optional[str]:
-    """Return the first hwmon path whose 'name' file matches driver_name."""
     for p in glob.glob("/sys/class/hwmon/hwmon*/name"):
-        name = _read_file(p)
-        if name == driver_name:
+        if _read_file(p) == driver_name:
             return os.path.dirname(p)
     return None
 
 
+# ------------------------------------------------------------------
+# CPU sensors
+# ------------------------------------------------------------------
+
 def read_cpu_temp_c() -> Optional[float]:
-    """
-    Try coretemp package temp first, then k10temp (AMD fallback),
-    then any acpitz thermal zone.
-    """
-    # coretemp (Intel) – Package id 0 temp
     hwmon = _find_hwmon_driver("coretemp")
     if hwmon:
         for f in sorted(glob.glob(f"{hwmon}/temp*_label")):
             label = _read_file(f)
             if label and "package" in label.lower():
-                input_f = f.replace("_label", "_input")
-                val = _read_float(input_f, 1000.0)
+                val = _read_float(f.replace("_label", "_input"), 1000.0)
                 if val is not None:
                     return val
 
-    # k10temp (AMD)
     hwmon = _find_hwmon_driver("k10temp")
     if hwmon:
         val = _read_float(f"{hwmon}/temp1_input", 1000.0)
         if val is not None:
             return val
 
-    # Thermal zones fallback
     for tz in sorted(glob.glob("/sys/class/thermal/thermal_zone*/type")):
         ttype = _read_file(tz)
         if ttype in ("x86_pkg_temp", "acpitz", "cpu-thermal"):
-            temp_f = os.path.join(os.path.dirname(tz), "temp")
-            val = _read_float(temp_f, 1000.0)
+            val = _read_float(os.path.join(os.path.dirname(tz), "temp"), 1000.0)
             if val is not None:
                 return val
     return None
 
 
+def read_cpu_hotspot_c() -> Optional[float]:
+    hwmon = _find_hwmon_driver("k10temp")
+    if hwmon:
+        for path in (f"{hwmon}/temp2_input", f"{hwmon}/temp3_input"):
+            val = _read_float(path, 1000.0)
+            if val is not None:
+                return val
+        val = _read_float(f"{hwmon}/temp1_input", 1000.0)
+        if val is not None:
+            return val
+
+    hwmon = _find_hwmon_driver("coretemp")
+    if hwmon:
+        for f in sorted(glob.glob(f"{hwmon}/temp*_label")):
+            label = _read_file(f)
+            if label and "package" in label.lower():
+                val = _read_float(f.replace("_label", "_input"), 1000.0)
+                if val is not None:
+                    return val
+    return read_cpu_temp_c()
+
+
+_cpu_usage_prev: dict = {}
+
+
 def read_cpu_usage_pct() -> Optional[float]:
-    """
-    Parse /proc/stat for a single-shot CPU usage sample.
-    We keep a module-level cache of the previous reading so that
-    consecutive calls produce a meaningful delta.
-    """
     stat = _read_file("/proc/stat")
     if stat is None:
         return None
     for line in stat.splitlines():
         if line.startswith("cpu "):
             parts = line.split()
-            # user, nice, system, idle, iowait, irq, softirq, steal
-            vals = [int(x) for x in parts[1:]]
+            vals  = [int(x) for x in parts[1:]]
             idle  = vals[3] + (vals[4] if len(vals) > 4 else 0)
             total = sum(vals)
             prev  = _cpu_usage_prev.get("data")
@@ -179,14 +162,37 @@ def read_cpu_usage_pct() -> Optional[float]:
             return max(0.0, min(100.0, (1.0 - d_idle / d_total) * 100.0))
     return None
 
-_cpu_usage_prev: dict = {}
+
+def read_cpu_max_thread_pct() -> Optional[float]:
+    try:
+        with open("/proc/stat") as f:
+            lines = f.readlines()
+    except OSError:
+        return None
+
+    max_usage = 0.0
+    for line in lines:
+        if line.startswith("cpu") and line[3].isdigit():
+            parts = line.split()
+            vals  = [int(x) for x in parts[1:]]
+            idle  = vals[3] + (vals[4] if len(vals) > 4 else 0)
+            total = sum(vals)
+            key   = parts[0]
+            prev  = _cpu_usage_prev.get(key)
+            _cpu_usage_prev[key] = (idle, total)
+            if prev:
+                d_idle  = idle  - prev[0]
+                d_total = total - prev[1]
+                if d_total > 0:
+                    usage = max(0.0, min(100.0, (1.0 - d_idle / d_total) * 100.0))
+                    max_usage = max(max_usage, usage)
+    return max_usage if max_usage > 0.0 else read_cpu_usage_pct()
+
+
+_cpu_power_prev: dict = {}
 
 
 def read_cpu_power_w() -> Optional[float]:
-    """
-    Use Intel RAPL via powercap, or hwmon power input.
-    """
-    # powercap RAPL – package-0 energy_uj
     for pkg in sorted(glob.glob("/sys/class/powercap/intel-rapl/intel-rapl:*/name")):
         name = _read_file(pkg)
         if name and "package" in name.lower():
@@ -200,26 +206,20 @@ def read_cpu_power_w() -> Optional[float]:
                 dt = now - prev[0]
                 if dt > 0:
                     de = energy - prev[1]
-                    # handle counter wrap (max_energy_range_uj)
                     if de < 0:
                         max_f = os.path.join(os.path.dirname(pkg), "max_energy_range_uj")
-                        max_e = _read_float(max_f) or 0.0
-                        de += max_e
-                    return de / dt / 1_000_000.0  # µJ/s → W
+                        de += _read_float(max_f) or 0.0
+                    return de / dt / 1_000_000.0
             return None
 
-    # hwmon power fallback
     for p in glob.glob("/sys/class/hwmon/hwmon*/power1_input"):
-        val = _read_float(p, 1_000_000.0)  # µW → W
+        val = _read_float(p, 1_000_000.0)
         if val is not None:
             return val
     return None
 
-_cpu_power_prev: dict = {}
-
 
 def read_cpu_freq_mhz() -> Optional[float]:
-    """Average across all CPUs from /proc/cpuinfo, fallback to cpufreq."""
     cpuinfo = _read_file("/proc/cpuinfo")
     if cpuinfo:
         freqs = []
@@ -232,7 +232,6 @@ def read_cpu_freq_mhz() -> Optional[float]:
         if freqs:
             return sum(freqs) / len(freqs)
 
-    # cpufreq fallback: scaling_cur_freq (kHz → MHz)
     files = sorted(glob.glob("/sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq"))
     if files:
         vals = [_read_float(f, 1000.0) for f in files]
@@ -243,21 +242,15 @@ def read_cpu_freq_mhz() -> Optional[float]:
 
 
 def read_cpu_volt_v() -> Optional[float]:
-    """
-    CPU VCore from hwmon – typically exposed by the board's SIO chip
-    (nct6775, it87, etc.) or coretemp.
-    """
     for driver in ("nct6775", "nct6792", "nct6798", "it87", "w83627ehf"):
         hwmon = _find_hwmon_driver(driver)
         if hwmon:
-            # Look for a voltage labelled vcore / vcpu
             for lf in glob.glob(f"{hwmon}/in*_label"):
                 label = (_read_file(lf) or "").lower()
                 if "vcore" in label or "vcpu" in label or "cpu" in label:
                     val = _read_float(lf.replace("_label", "_input"), 1000.0)
                     if val is not None:
                         return val
-            # Fallback: in1 is often VCore on SuperIO chips
             val = _read_float(f"{hwmon}/in1_input", 1000.0)
             if val is not None:
                 return val
@@ -265,16 +258,10 @@ def read_cpu_volt_v() -> Optional[float]:
 
 
 # ------------------------------------------------------------------
-# Fan RPM
+# Fan / pump RPM
 # ------------------------------------------------------------------
 
-def _read_fan_rpm(hwmon_path: str, fan_index: int = 1) -> Optional[float]:
-    val = _read_float(f"{hwmon_path}/fan{fan_index}_input")
-    return val
-
-
 def read_fan_rpm() -> Optional[float]:
-    """First available fan from any hwmon driver (system/case fan)."""
     for nf in sorted(glob.glob("/sys/class/hwmon/hwmon*/fan1_input")):
         val = _read_float(nf)
         if val is not None and val > 0:
@@ -282,11 +269,7 @@ def read_fan_rpm() -> Optional[float]:
     return None
 
 
-def read_wc_fan_rpm() -> Optional[float]:
-    """
-    Water-cooling pump/fan RPM.  Tries fan2 on SuperIO first,
-    then any fan that isn't fan1.
-    """
+def read_pump_rpm() -> Optional[float]:
     for driver in ("nct6775", "nct6792", "nct6798", "it87"):
         hwmon = _find_hwmon_driver(driver)
         if hwmon:
@@ -294,11 +277,11 @@ def read_wc_fan_rpm() -> Optional[float]:
                 val = _read_float(f"{hwmon}/fan{fan_idx}_input")
                 if val is not None and val > 0:
                     return val
-    return None
+    return read_fan_rpm()
 
 
 # ------------------------------------------------------------------
-# AMD GPU sensors (AMDGPU sysfs)  – primary for RX 6600 XT
+# AMD GPU sensors
 # ------------------------------------------------------------------
 
 def _find_amdgpu_hwmon() -> Optional[str]:
@@ -309,11 +292,10 @@ def _find_amdgpu_hwmon() -> Optional[str]:
 
 
 def _find_amdgpu_drm() -> Optional[str]:
-    """Return first amdgpu DRM card sysfs path."""
     for dev in sorted(glob.glob("/sys/class/drm/card*/device/driver")):
         target = os.readlink(dev) if os.path.islink(dev) else ""
         if "amdgpu" in target:
-            return os.path.dirname(dev)  # .../card0/device
+            return os.path.dirname(dev)
     return None
 
 
@@ -321,9 +303,7 @@ def read_gpu_temp_c_amd() -> Optional[float]:
     hwmon = _find_amdgpu_hwmon()
     if not hwmon:
         return None
-    # temp1 = edge, temp2 = junction (hotspot), temp3 = mem
-    val = _read_float(f"{hwmon}/temp1_input", 1000.0)
-    return val
+    return _read_float(f"{hwmon}/temp1_input", 1000.0)
 
 
 def read_gpu_usage_pct_amd() -> Optional[float]:
@@ -332,58 +312,31 @@ def read_gpu_usage_pct_amd() -> Optional[float]:
         val = _read_float(f"{drm}/gpu_busy_percent")
         if val is not None:
             return val
-    # DRM debugfs fallback (requires root)
-    for p in glob.glob("/sys/kernel/debug/dri/*/amdgpu_pm_info"):
-        content = _read_file(p)
-        if content:
-            for line in content.splitlines():
-                if "GPU Load" in line:
-                    try:
-                        return float(line.split(":")[1].strip().replace("%", ""))
-                    except (ValueError, IndexError):
-                        pass
-    return None
-
-
-def read_gpu_power_w_amd() -> Optional[float]:
-    hwmon = _find_amdgpu_hwmon()
-    if not hwmon:
-        return None
-    # power1_average (µW) — available on RDNA1/RDNA2 (RX 6600 XT)
-    for fname in ("power1_average", "power1_input"):
-        val = _read_float(f"{hwmon}/{fname}", 1_000_000.0)
-        if val is not None:
-            return val
     return None
 
 
 def read_gpu_freq_mhz_amd() -> Optional[float]:
     hwmon = _find_amdgpu_hwmon()
     if hwmon:
-        # freq1_input = SCLK in Hz on newer kernels
         val = _read_float(f"{hwmon}/freq1_input", 1_000_000.0)
         if val is not None:
             return val
-    # pp_dpm_sclk: last line with * is active level
     drm = _find_amdgpu_drm()
     if drm:
         content = _read_file(f"{drm}/pp_dpm_sclk")
         if content:
             for line in reversed(content.splitlines()):
                 if "*" in line:
-                    # e.g.  "1: 2475Mhz *"
-                    parts = line.replace("*", "").strip().split()
-                    for p in parts:
-                        p_clean = p.lower().replace("mhz", "")
+                    for part in line.replace("*", "").strip().split():
                         try:
-                            return float(p_clean)
+                            return float(part.lower().replace("mhz", ""))
                         except ValueError:
                             pass
     return None
 
 
 # ------------------------------------------------------------------
-# NVIDIA GPU sensors (nvidia-smi)  – fallback
+# NVIDIA GPU sensors
 # ------------------------------------------------------------------
 
 def _nvidia_smi_query(field: str) -> Optional[str]:
@@ -406,11 +359,6 @@ def read_gpu_temp_c_nvidia() -> Optional[float]:
 
 def read_gpu_usage_pct_nvidia() -> Optional[float]:
     v = _nvidia_smi_query("utilization.gpu")
-    return float(v) if v else None
-
-
-def read_gpu_power_w_nvidia() -> Optional[float]:
-    v = _nvidia_smi_query("power.draw")
     return float(v) if v else None
 
 
@@ -437,95 +385,101 @@ def detect_gpu_backend() -> str:
     return GpuBackend.NONE
 
 
-def read_gpu_sensors(backend: str) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
-    """Returns (temp_c, usage_pct, power_w, freq_mhz)."""
+def read_gpu_sensors(backend: str) -> tuple:
+    """Returns (temp_c, usage_pct, freq_mhz)."""
     if backend == GpuBackend.AMD:
-        return (
-            read_gpu_temp_c_amd(),
-            read_gpu_usage_pct_amd(),
-            read_gpu_power_w_amd(),
-            read_gpu_freq_mhz_amd(),
-        )
+        return (read_gpu_temp_c_amd(), read_gpu_usage_pct_amd(), read_gpu_freq_mhz_amd())
     if backend == GpuBackend.NVIDIA:
-        return (
-            read_gpu_temp_c_nvidia(),
-            read_gpu_usage_pct_nvidia(),
-            read_gpu_power_w_nvidia(),
-            read_gpu_freq_mhz_nvidia(),
-        )
-    return (None, None, None, None)
+        return (read_gpu_temp_c_nvidia(), read_gpu_usage_pct_nvidia(), read_gpu_freq_mhz_nvidia())
+    return (None, None, None)
 
 
 # ---------------------------------------------------------------------------
-# HID report builder
+# HID report builder — protocol for VID:5131 PID:2007
 # ---------------------------------------------------------------------------
 
-def scale(value: Optional[float], max_value: float) -> int:
-    """
-    Scale a sensor value to 0-255.
-    None / negative values map to 0.
-    """
-    if value is None or max_value <= 0:
+def _clamp_int(value: Optional[float], lo: int = 0, hi: int = 255) -> int:
+    if value is None:
         return 0
-    clamped = max(0.0, min(value, max_value))
-    return int(clamped / max_value * 255)
+    return max(lo, min(hi, int(value)))
+
+
+def _rpm_bytes(rpm: Optional[float]) -> tuple:
+    r = max(0, min(25500, int(rpm or 0)))
+    return r // 100, r % 100
 
 
 def build_report(
-    cpu_temp:   Optional[float],
-    cpu_usage:  Optional[float],
-    cpu_power:  Optional[float],
-    cpu_freq:   Optional[float],
-    cpu_volt:   Optional[float],
-    gpu_temp:   Optional[float],
-    gpu_usage:  Optional[float],
-    gpu_power:  Optional[float],
-    gpu_freq:   Optional[float],
-    wc_fan_rpm: Optional[float],
-    fan_rpm:    Optional[float],
-    mv: MaxValues,
+    cpu_temp_c:         Optional[float],
+    cpu_hotspot_c:      Optional[float],
+    cpu_power_w:        Optional[float],
+    cpu_freq_mhz:       Optional[float],
+    cpu_volt_v:         Optional[float],
+    cpu_usage_pct:      Optional[float],
+    cpu_max_thread_pct: Optional[float],
+    gpu_temp_c:         Optional[float],
+    gpu_usage_pct:      Optional[float],
+    gpu_freq_mhz:       Optional[float],
+    fan_rpm:            Optional[float],
+    pump_rpm:           Optional[float],
+    counter:            int = 0,
 ) -> bytes:
-    """
-    Build the 64-byte HID output report.
+    buf = bytearray(REPORT_LEN)
 
-    Layout:
-      [0]       report ID  = 0x00
-      [1]       header     = 0x01
-      [2]       header     = 0x02
-      [3..35]   SendValueArray[0..32]  (scaled sensor values)
-      [36..63]  0x00 padding
-    """
-    send_values = [0] * 32  # slots 0-31 available; protocol uses 0-10
+    # Header
+    buf[0] = 0x00
+    buf[1] = 0x00
+    buf[2] = 0x01
+    buf[3] = 0x02
 
-    send_values[IDX_CPU_TEMP]   = scale(cpu_temp,   mv.cpu_temp_c)
-    send_values[IDX_CPU_USAGE]  = scale(cpu_usage,  mv.cpu_usage_pct)
-    send_values[IDX_CPU_POWER]  = scale(cpu_power,  mv.cpu_power_w)
-    send_values[IDX_CPU_FREQ]   = scale(cpu_freq,   mv.cpu_freq_mhz)
-    send_values[IDX_CPU_VOLT]   = scale(cpu_volt,   mv.cpu_volt_v)
-    send_values[IDX_GPU_TEMP]   = scale(gpu_temp,   mv.gpu_temp_c)
-    send_values[IDX_GPU_USAGE]  = scale(gpu_usage,  mv.gpu_usage_pct)
-    send_values[IDX_GPU_POWER]  = scale(gpu_power,  mv.gpu_power_w)
-    send_values[IDX_GPU_FREQ]   = scale(gpu_freq,   mv.gpu_freq_mhz)
-    send_values[IDX_WC_FAN_RPM] = scale(wc_fan_rpm, mv.wc_fan_rpm)
-    send_values[IDX_FAN_RPM]    = scale(fan_rpm,    mv.fan_rpm)
+    # Sensors
+    buf[4]  = _clamp_int(cpu_temp_c)
+    buf[5]  = _clamp_int(gpu_usage_pct, 0, 100)
+    buf[6]  = 0x00  # GPU power: firmware bug — must stay 0
+    buf[7]  = _clamp_int(cpu_power_w)
+    buf[8]  = _clamp_int(cpu_hotspot_c)
+    buf[9]  = _clamp_int(cpu_max_thread_pct, 0, 100)
+    buf[10] = _clamp_int((gpu_freq_mhz or 0) / 10)
+    buf[11] = _clamp_int((cpu_freq_mhz or 0) / 48)
+    buf[12] = 0x01
+    buf[13] = _clamp_int((cpu_volt_v or 0) * 100)
+    buf[14] = _clamp_int(gpu_temp_c)
 
-    report = bytearray(REPORT_LEN)
-    report[0] = REPORT_ID   # 0x00 – "no report ID" placeholder for hidapi
-    report[1] = HEADER_B1   # 0x01
-    report[2] = HEADER_B2   # 0x02
-    for i, v in enumerate(send_values):
-        report[3 + i] = v & 0xFF
-    # bytes 35-64 remain 0x00 (padding already set by bytearray init)
-    return bytes(report)
+    # buf[15..18] = 0x00 (already zero)
+    buf[19] = 0x0A  # Celsius flag
+    # buf[20] = 0x00
+
+    buf[21] = _clamp_int(cpu_usage_pct, 0, 100)
+
+    fan_hi, fan_lo = _rpm_bytes(fan_rpm)
+    buf[22] = fan_hi
+    buf[23] = fan_lo
+
+    pmp_hi, pmp_lo = _rpm_bytes(pump_rpm)
+    buf[24] = pmp_hi
+    buf[25] = pmp_lo
+
+    # Display config thresholds (fixed defaults from protocol analysis)
+    buf[26] = 0x14
+    buf[27] = 0x1A
+    buf[28] = 0x03
+    buf[29] = 0x0E
+    buf[30] = 0x12
+    buf[31] = 0x19
+
+    buf[32] = counter & 0xFF
+    buf[33] = 0x06
+    buf[34] = 0x19
+
+    # buf[35..64] = 0x00 padding (already zero)
+    return bytes(buf)
 
 
 # ---------------------------------------------------------------------------
-# HID device management
+# HID device wrapper
 # ---------------------------------------------------------------------------
 
 class HidDevice:
-    """Wrapper around hid.Device with reconnection logic."""
-
     def __init__(self, vid: int, pid: int, reconnect_delay: float = 5.0):
         self.vid             = vid
         self.pid             = pid
@@ -540,7 +494,7 @@ class HidDevice:
             log.info(
                 "Opened HID device %04X:%04X – %s",
                 self.vid, self.pid,
-                getattr(dev, "manufacturer", None) or "unknown manufacturer",
+                getattr(dev, "product", None) or "unknown",
             )
             return True
         except Exception as exc:
@@ -554,10 +508,6 @@ class HidDevice:
         return self._open()
 
     def send(self, report: bytes) -> bool:
-        """
-        Send a HID output report.  Returns True on success.
-        Closes the device handle on error so it is re-opened next cycle.
-        """
         if self._dev is None:
             return False
         try:
@@ -566,7 +516,7 @@ class HidDevice:
                 log.warning("HID write returned %d – will reconnect", written)
                 self.close()
                 return False
-            log.debug("HID write ok: %d bytes, report: %s", written, report.hex(" "))
+            log.debug("HID write ok: %d bytes", written)
             return True
         except Exception as exc:
             log.warning("HID write error (%s) – will reconnect", exc)
@@ -587,11 +537,12 @@ class HidDevice:
 # ---------------------------------------------------------------------------
 
 class Monitor:
-    def __init__(self, mv: MaxValues, dry_run: bool = False, verbose: bool = False):
-        self.mv      = mv
-        self.dry_run = dry_run
-        self.verbose = verbose
+    def __init__(self, dry_run: bool = False, verbose: bool = False):
+        self.dry_run  = dry_run
+        self.verbose  = verbose
         self._running = True
+        self._counter = 0
+        self._counter_tick = 0
 
         if not dry_run:
             self._hid = HidDevice(VENDOR_ID, PRODUCT_ID)
@@ -600,58 +551,54 @@ class Monitor:
 
         self._gpu_backend: Optional[str] = None
 
-    # ------------------------------------------------------------------
     def _detect_gpu(self) -> str:
         backend = detect_gpu_backend()
         log.info("GPU backend detected: %s", backend)
         return backend
 
-    # ------------------------------------------------------------------
     def _collect(self) -> dict:
-        cpu_temp  = read_cpu_temp_c()
-        cpu_usage = read_cpu_usage_pct()
-        cpu_power = read_cpu_power_w()
-        cpu_freq  = read_cpu_freq_mhz()
-        cpu_volt  = read_cpu_volt_v()
-        wc_fan    = read_wc_fan_rpm()
-        fan       = read_fan_rpm()
-
         if self._gpu_backend is None:
             self._gpu_backend = self._detect_gpu()
 
-        gpu_temp, gpu_usage, gpu_power, gpu_freq = read_gpu_sensors(self._gpu_backend)
+        gpu_temp, gpu_usage, gpu_freq = read_gpu_sensors(self._gpu_backend)
 
         return dict(
-            cpu_temp=cpu_temp, cpu_usage=cpu_usage, cpu_power=cpu_power,
-            cpu_freq=cpu_freq, cpu_volt=cpu_volt,
-            gpu_temp=gpu_temp, gpu_usage=gpu_usage, gpu_power=gpu_power,
-            gpu_freq=gpu_freq,
-            wc_fan_rpm=wc_fan, fan_rpm=fan,
+            cpu_temp_c         = read_cpu_temp_c(),
+            cpu_hotspot_c      = read_cpu_hotspot_c(),
+            cpu_power_w        = read_cpu_power_w(),
+            cpu_freq_mhz       = read_cpu_freq_mhz(),
+            cpu_volt_v         = read_cpu_volt_v(),
+            cpu_usage_pct      = read_cpu_usage_pct(),
+            cpu_max_thread_pct = read_cpu_max_thread_pct(),
+            gpu_temp_c         = gpu_temp,
+            gpu_usage_pct      = gpu_usage,
+            gpu_freq_mhz       = gpu_freq,
+            fan_rpm            = read_fan_rpm(),
+            pump_rpm           = read_pump_rpm(),
         )
 
-    # ------------------------------------------------------------------
-    def _log_sensors(self, sensors: dict):
+    def _log_sensors(self, s: dict):
         def fmt(v, unit=""):
             return f"{v:.1f}{unit}" if v is not None else "N/A"
-
         log.debug(
-            "CPU: temp=%s usage=%s power=%s freq=%s volt=%s | "
-            "GPU: temp=%s usage=%s power=%s freq=%s | "
-            "FAN: wc=%s sys=%s",
-            fmt(sensors["cpu_temp"], "°C"),
-            fmt(sensors["cpu_usage"], "%"),
-            fmt(sensors["cpu_power"], "W"),
-            fmt(sensors["cpu_freq"], "MHz"),
-            fmt(sensors["cpu_volt"], "V"),
-            fmt(sensors["gpu_temp"], "°C"),
-            fmt(sensors["gpu_usage"], "%"),
-            fmt(sensors["gpu_power"], "W"),
-            fmt(sensors["gpu_freq"], "MHz"),
-            fmt(sensors["wc_fan_rpm"], "RPM"),
-            fmt(sensors["fan_rpm"], "RPM"),
+            "CPU: temp=%s hotspot=%s power=%s freq=%s volt=%s usage=%s maxthread=%s | "
+            "GPU: temp=%s usage=%s freq=%s | FAN: fan=%s pump=%s",
+            fmt(s["cpu_temp_c"], "°C"), fmt(s["cpu_hotspot_c"], "°C"),
+            fmt(s["cpu_power_w"], "W"),  fmt(s["cpu_freq_mhz"], "MHz"),
+            fmt(s["cpu_volt_v"], "V"),   fmt(s["cpu_usage_pct"], "%"),
+            fmt(s["cpu_max_thread_pct"], "%"),
+            fmt(s["gpu_temp_c"], "°C"),  fmt(s["gpu_usage_pct"], "%"),
+            fmt(s["gpu_freq_mhz"], "MHz"),
+            fmt(s["fan_rpm"], "RPM"),    fmt(s["pump_rpm"], "RPM"),
         )
 
-    # ------------------------------------------------------------------
+    def _next_counter(self) -> int:
+        self._counter_tick += 1
+        if self._counter_tick >= 3:
+            self._counter_tick = 0
+            self._counter = (self._counter + 1) & 0xFF
+        return self._counter
+
     def run(self):
         log.info(
             "PC Monitor daemon starting (VID=%04X PID=%04X, interval=%dms, dry_run=%s)",
@@ -664,24 +611,22 @@ class Monitor:
         while self._running:
             loop_start = time.monotonic()
 
-            # ---- Collect sensors ----------------------------------------
             try:
                 sensors = self._collect()
             except Exception as exc:
                 log.error("Sensor collection error: %s", exc, exc_info=True)
                 sensors = {k: None for k in (
-                    "cpu_temp", "cpu_usage", "cpu_power", "cpu_freq", "cpu_volt",
-                    "gpu_temp", "gpu_usage", "gpu_power", "gpu_freq",
-                    "wc_fan_rpm", "fan_rpm",
+                    "cpu_temp_c", "cpu_hotspot_c", "cpu_power_w", "cpu_freq_mhz",
+                    "cpu_volt_v", "cpu_usage_pct", "cpu_max_thread_pct",
+                    "gpu_temp_c", "gpu_usage_pct", "gpu_freq_mhz",
+                    "fan_rpm", "pump_rpm",
                 )}
 
             if self.verbose:
                 self._log_sensors(sensors)
 
-            # ---- Build report -------------------------------------------
-            report = build_report(mv=self.mv, **sensors)
+            report = build_report(**sensors, counter=self._next_counter())
 
-            # ---- Send ---------------------------------------------------
             if self.dry_run:
                 log.info("DRY-RUN report: %s", report.hex(" "))
             else:
@@ -697,10 +642,8 @@ class Monitor:
                             last_open_logged = True
                 else:
                     last_open_logged = False
-                    if not self._hid.send(report):
-                        log.debug("Send failed – will retry next cycle")
+                    self._hid.send(report)
 
-            # ---- Sleep for remainder of interval ------------------------
             elapsed_ms = (time.monotonic() - loop_start) * 1000.0
             sleep_ms   = max(0.0, UPDATE_MS - elapsed_ms)
             if sleep_ms > 0:
@@ -710,7 +653,6 @@ class Monitor:
         if self._hid:
             self._hid.close()
 
-    # ------------------------------------------------------------------
     def stop(self):
         log.info("Shutdown requested.")
         self._running = False
@@ -722,30 +664,14 @@ class Monitor:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="PC Monitor NixOS – HID display daemon",
+        description="PC Monitor NixOS – HID display daemon (VID:5131 PID:2007)"
     )
     p.add_argument("--dry-run", action="store_true",
                    help="Collect sensors and print report without opening HID device")
     p.add_argument("--verbose", "-v", action="store_true",
                    help="Log sensor values every cycle")
     p.add_argument("--log-level", default="INFO",
-                   choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-                   help="Logging level (default: INFO)")
-
-    # Max-value overrides (match original nud_Pic* controls)
-    g = p.add_argument_group("sensor max values (for 0-255 scaling)")
-    g.add_argument("--max-cpu-temp",    type=float, default=100.0, metavar="C")
-    g.add_argument("--max-cpu-usage",   type=float, default=100.0, metavar="PCT")
-    g.add_argument("--max-cpu-power",   type=float, default=253.0, metavar="W")
-    g.add_argument("--max-cpu-freq",    type=float, default=5600.0, metavar="MHZ")
-    g.add_argument("--max-cpu-volt",    type=float, default=1.5,   metavar="V")
-    g.add_argument("--max-gpu-temp",    type=float, default=110.0, metavar="C")
-    g.add_argument("--max-gpu-usage",   type=float, default=100.0, metavar="PCT")
-    g.add_argument("--max-gpu-power",   type=float, default=160.0, metavar="W")
-    g.add_argument("--max-gpu-freq",    type=float, default=2589.0, metavar="MHZ")
-    g.add_argument("--max-wc-fan",      type=float, default=3000.0, metavar="RPM")
-    g.add_argument("--max-fan",         type=float, default=3000.0, metavar="RPM")
-
+                   choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return p.parse_args()
 
 
@@ -755,21 +681,7 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    mv = MaxValues(
-        cpu_temp_c    = args.max_cpu_temp,
-        cpu_usage_pct = args.max_cpu_usage,
-        cpu_power_w   = args.max_cpu_power,
-        cpu_freq_mhz  = args.max_cpu_freq,
-        cpu_volt_v    = args.max_cpu_volt,
-        gpu_temp_c    = args.max_gpu_temp,
-        gpu_usage_pct = args.max_gpu_usage,
-        gpu_power_w   = args.max_gpu_power,
-        gpu_freq_mhz  = args.max_gpu_freq,
-        wc_fan_rpm    = args.max_wc_fan,
-        fan_rpm       = args.max_fan,
-    )
-
-    monitor = Monitor(mv=mv, dry_run=args.dry_run, verbose=args.verbose)
+    monitor = Monitor(dry_run=args.dry_run, verbose=args.verbose)
 
     def _sighandler(signum, frame):
         monitor.stop()
