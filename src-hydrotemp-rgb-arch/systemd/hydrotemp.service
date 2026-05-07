@@ -1,0 +1,12 @@
+[Unit]
+Description=HydroTemp AIO monitor daemon
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/bin/hydrotemp-start.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
