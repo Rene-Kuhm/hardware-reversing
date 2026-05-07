@@ -1,65 +1,32 @@
 # hydrotemp-rgb-arch
 
-HydroTemp AIO monitor + RGB Fusion keepalive + LEDBLE RGB control for Arch Linux / CachyOS.
+HydroTemp AIO monitor + RGB Fusion keepalive for Arch Linux / CachyOS.
 
 Adaptado de [Datos-xyz-hydrotemp](https://github.com/Rene-Kuhm/Datos-xyz-hydrotemp) y [Datos-RGB-Fusion-nixOS](https://github.com/Rene-Kuhm/Datos-RGB-Fusion-nixOS) para Arch Linux.
 
-## Components
+## Componentes
 
-### monitor.py — HydroTemp HID Display Daemon
+### monitor.py — Daemon HID display HydroTemp
 
-Sends hardware sensor data (CPU temp, GPU temp, fan RPM, etc.) to the USB HID display (VID:5131 PID:2007) on AIO liquid coolers.
+Envía datos de sensores (temp CPU, temp GPU, RPM fan/pump) al display USB HID (VID:5131 PID:2007) de coolers AIO.
 
-Dependencies:
+Dependencias:
 - `python-hid` (Arch: `pacman -S hidapi`)
 - Python 3.10+
 
 ```bash
-# Run directly
 python3 monitor.py --verbose
-
-# Dry-run (no HID device needed)
 python3 monitor.py --dry-run --verbose
-```
-
-### led_control.py — LEDBLE BLE RGB Controller
-
-Controls an LEDBLE RGB LED strip via Bluetooth Low Energy.
-
-Dependencies:
-- `python-bleak` (Arch: `pacman -S python-bleak`)
-
-```bash
-# Turn on (default: white)
-python3 led_control.py on
-
-# Turn on with color
-python3 led_control.py on red
-python3 led_control.py on 255 128 0
-
-# Turn off
-python3 led_control.py off
-
-# Toggle
-python3 led_control.py toggle
-
-# Status
-python3 led_control.py status
-```
-
-Set your device MAC via environment:
-```bash
-export LEDBLE_MAC="FF:FF:38:61:AB:31"
 ```
 
 ### bin/rgb-keepalive.sh — OpenRGB Keepalive
 
-Periodically re-applies the RGB profile using OpenRGB to prevent motherboard from resetting colors.
+Re-aplica periódicamente el perfil RGB con OpenRGB para que la placa no resetee los colores.
 
-Dependencies:
+Dependencias:
 - `openrgb` (Arch: `pacman -S openrgb`)
 
-Environment variables (with defaults):
+Variables de entorno (con defaults):
 - `RGB_DEVICE_ID=1`
 - `RGB_MEMORY_DEVICE_ID=0`
 - `RGB_MODE=static`
@@ -68,59 +35,42 @@ Environment variables (with defaults):
 - `RGB_ARG_SIZE=30`
 - `RGB_INTERVAL_SEC=20`
 
-### bin/hydrotemp-start.sh — Monitor launcher
+### bin/hydrotemp-start.sh — Launcher del monitor
 
-Script that launches `monitor.py`. Used by the systemd service.
+Script que lanza `monitor.py`. Usado por el servicio de systemd.
 
-### waybar/waybar_led.sh — Waybar LED Module
+### systemd/ — Servicios de usuario
 
-Waybar custom module that shows LED on/off state and allows toggle/color change via click.
+- `hydrotemp.service` — Daemon del monitor HydroTemp
+- `rgb-init.service` — Keepalive RGB con OpenRGB
 
-Dependencies:
-- `led_control.py`
-- `wofi` or `rofi` (for color menu on right-click)
+## Instalación
 
-Waybar config:
-```json
-"custom/led": {
-    "exec": "/path/to/hydrotemp-rgb-arch/waybar/waybar_led.sh status",
-    "on-click": "/path/to/hydrotemp-rgb-arch/waybar/waybar_led.sh left-click",
-    "on-click-right": "/path/to/hydrotemp-rgb-arch/waybar/waybar_led.sh right-click",
-    "on-click-middle": "/path/to/hydrotemp-rgb-arch/waybar/waybar_led.sh middle-click",
-    "interval": 5,
-    "return-type": "json"
-}
-```
-
-## Installation
-
-1. Clone the repo:
+1. Clonar:
 ```bash
 git clone https://github.com/Rene-Kuhm/hydrotemp-rgb-arch.git ~/hydrotemp-rgb-arch
 ```
 
-2. Install dependencies:
+2. Instalar dependencias:
 ```bash
-sudo pacman -S hidapi python-bleak openrgb
+sudo pacman -S hidapi openrgb
 ```
 
-3. Copy launch scripts to `~/bin/`:
+3. Copiar scripts de inicio a `~/bin/`:
 ```bash
 cp bin/hydrotemp-start.sh ~/bin/
 cp bin/rgb-keepalive.sh ~/bin/
 chmod +x ~/bin/hydrotemp-start.sh ~/bin/rgb-keepalive.sh
 ```
 
-4. Edit `~/bin/hydrotemp-start.sh` to point to your clone path if different.
-
-5. Copy systemd user services:
+4. Copiar servicios de systemd:
 ```bash
 mkdir -p ~/.config/systemd/user/
 cp systemd/hydrotemp.service ~/.config/systemd/user/
 cp systemd/rgb-init.service ~/.config/systemd/user/
 ```
 
-6. Enable and start services:
+5. Habilitar e iniciar:
 ```bash
 systemctl --user daemon-reload
 systemctl --user enable --now hydrotemp.service
@@ -131,4 +81,3 @@ systemctl --user enable --now rgb-init.service
 
 - **HydroTemp display**: VID `5131` PID `2007` (FBB display)
 - **Motherboard RGB**: Gigabyte Z790 AORUS (via OpenRGB)
-- **LEDBLE RGB strip**: BLE device (configurable MAC via `LEDBLE_MAC`)

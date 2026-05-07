@@ -11,7 +11,7 @@ Environment=RGB_COLOR=FFFFFF
 Environment=RGB_BRIGHTNESS=100
 Environment=RGB_ARG_SIZE=30
 Environment=RGB_INTERVAL_SEC=20
-ExecStart=%h/bin/rgb-keepalive.sh
+ExecStart=/home/tecnodespegue/bin/rgb-keepalive.sh
 Restart=always
 RestartSec=3
 

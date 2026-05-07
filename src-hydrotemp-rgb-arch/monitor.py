@@ -91,14 +91,11 @@ def read_cpu_usage_pct() -> Optional[float]:
 
 
 def read_fan_rpm() -> Optional[float]:
-    zero_rpm: Optional[float] = None
-    for nf in sorted(glob.iglob("/sys/class/hwmon/hwmon*/fan*_input")):
+    for nf in sorted(glob.iglob("/sys/class/hwmon/hwmon*/fan1_input")):
         val = _read_float(nf)
         if val is not None and val > 0:
             return val
-        if val == 0:
-            zero_rpm = 0.0
-    return zero_rpm
+    return None
 
 
 def read_pump_rpm() -> Optional[float]:
