@@ -1,0 +1,100 @@
+# Stream Station — Configuración de ejemplo
+# Copia esto a ~/.config/stream-station/config.toml
+#
+# Dispositivo: Mirabox Stream Dock (VID:0x3554 PID:0xFA09)
+# Botones numerados de izquierda a derecha, fila por fila (0-based)
+# Ejemplo para layout 3×5 (15 botones):
+#   [0]  [1]  [2]  [3]  [4]
+#   [5]  [6]  [7]  [8]  [9]
+#   [10] [11] [12] [13] [14]
+
+# Brillo de pantalla (0-100)
+brightness = 70
+
+# Activar servidor WebSocket compatible con Elgato Stream Deck SDK
+# (permite usar plugins de terceros compatibles con Stream Deck)
+ws_server = false
+ws_port   = 23519
+
+# ─── Botones ────────────────────────────────────────────────────────────────
+# Cada botón tiene:
+#   label      = texto descriptivo (solo para documentación)
+#   icon       = ruta a imagen (PNG/JPG, se redimensiona a 72×72)
+#   color      = color de fondo en hex si no hay icono
+#   command    = comando a ejecutar al PULSAR el botón
+#   on_release = comando a ejecutar al SOLTAR el botón
+
+[buttons.0]
+label   = "Terminal"
+color   = "#1a1a2e"
+command = "kitty &"
+
+[buttons.1]
+label   = "Firefox"
+color   = "#ff6600"
+command = "firefox &"
+
+[buttons.2]
+label   = "VS Code"
+color   = "#007acc"
+command = "code &"
+
+[buttons.3]
+label   = "Spotify"
+color   = "#1db954"
+command = "spotify &"
+
+[buttons.4]
+label   = "Apagar pantalla"
+color   = "#333333"
+command = "xset dpms force off"
+
+[buttons.5]
+label   = "Captura de pantalla"
+icon    = "/home/user/.config/stream-station/icons/screenshot.png"
+command = "flameshot gui &"
+
+[buttons.6]
+label   = "Play/Pause"
+color   = "#ffffff"
+command = "playerctl play-pause"
+
+[buttons.7]
+label   = "Anterior"
+color   = "#aaaaaa"
+command = "playerctl previous"
+
+[buttons.8]
+label   = "Siguiente"
+color   = "#aaaaaa"
+command = "playerctl next"
+
+[buttons.9]
+label   = "Silenciar"
+color   = "#cc0000"
+command = "pactl set-sink-mute @DEFAULT_SINK@ toggle"
+
+[buttons.10]
+label   = "OBS: Iniciar stream"
+color   = "#e20000"
+command = "obs-cmd streaming start"
+
+[buttons.11]
+label   = "OBS: Detener stream"
+color   = "#555555"
+command = "obs-cmd streaming stop"
+
+[buttons.12]
+label   = "Bloquear pantalla"
+color   = "#000033"
+command = "loginctl lock-session"
+
+[buttons.13]
+label   = "Subir volumen"
+color   = "#006600"
+command = "pactl set-sink-volume @DEFAULT_SINK@ +5%"
+
+[buttons.14]
+label   = "Bajar volumen"
+color   = "#660000"
+command = "pactl set-sink-volume @DEFAULT_SINK@ -5%"
