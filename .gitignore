@@ -27,17 +27,21 @@ config.toml
 *.log
 *.err
 
-# Artefactos de empaquetado macOS (los scripts SI se versionan)
+# Salida de compilacion, a cualquier profundidad (como los originales)
+dist/
+build/
+
+# ...pero hydrotemp-aio/macos/build/ contiene scripts versionados: se exceptua
+!hydrotemp-aio/macos/build/
+!hydrotemp-aio/macos/build/**
+
+# ...y dentro de esa excepcion, los artefactos reales si se ignoran
 hydrotemp-aio/macos/build/dist/
 hydrotemp-aio/macos/build/work/
 hydrotemp-aio/macos/build/pkg-root/
 hydrotemp-aio/macos/build/dmg-staging/
 hydrotemp-aio/macos/build/*.pkg
 hydrotemp-aio/macos/build/*.dmg
-
-# Salida de compilacion generica (raiz)
-/dist/
-/build/
 
 # Nix
 result
