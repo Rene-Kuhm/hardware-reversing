@@ -1,3 +1,8 @@
+> **Archived document.** This is the original README of the `Datos-RGB-Fusion-nixOS` repository,
+> kept for provenance after the five hardware projects were consolidated into
+> `hardware-reversing`. Links have been redirected to the corresponding directory
+> in this repository. See the root [README](../README.md) for current instructions.
+
 # RGB Fusion — NixOS/Linux LED Controller
 
 Controls Gigabyte motherboard RGB LEDs on Linux via SMBus/I2C.

@@ -1,7 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
+
+# SPECPATH is injected by PyInstaller and points at this file's directory
+# (hydrotemp-aio/macos/build), so the source resolves in any clone.
+SRC = os.path.normpath(os.path.join(SPECPATH, '..', 'monitor_macos.py'))
 
 a = Analysis(
-    ['/Users/rene/hydrotemp-aio-mac/monitor_macos.py'],
+    [SRC],
     pathex=[],
     binaries=[
         ('/usr/local/opt/hidapi/lib/libhidapi.0.15.0.dylib', '.'),

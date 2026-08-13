@@ -1,3 +1,8 @@
+> **Archived document.** This is the original README of the `Datos-Stream-Station-nixos` repository,
+> kept for provenance after the five hardware projects were consolidated into
+> `hardware-reversing`. Links have been redirected to the corresponding directory
+> in this repository. See the root [README](../README.md) for current instructions.
+
 # Stream Station NixOS
 
 Daemon para controlar el **Mirabox Stream Dock** (vendido como "Stream Station") en NixOS/Linux.
@@ -35,7 +40,7 @@ stream_station.py
 Añade a tu `flake.nix`:
 ```nix
 {
-  inputs.stream-station.url = "github:Rene-Kuhm/Datos-Stream-Station-nixos";
+  inputs.stream-station.url = "github:Rene-Kuhm/hardware-reversing?dir=stream-station/nixos";
 
   outputs = { nixpkgs, stream-station, ... }: {
     nixosConfigurations.mi-maquina = nixpkgs.lib.nixosSystem {
@@ -58,8 +63,8 @@ Añade a tu `flake.nix`:
 
 ### Opción 2: nix run (sin instalar)
 ```bash
-nix run github:Rene-Kuhm/Datos-Stream-Station-nixos -- list
-nix run github:Rene-Kuhm/Datos-Stream-Station-nixos -- daemon
+nix run github:Rene-Kuhm/hardware-reversing?dir=stream-station/nixos -- list
+nix run github:Rene-Kuhm/hardware-reversing?dir=stream-station/nixos -- daemon
 ```
 
 ### Opción 3: Instalación manual

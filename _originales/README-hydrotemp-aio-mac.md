@@ -1,3 +1,8 @@
+> **Archived document.** This is the original README of the `hydrotemp-aio-mac` repository,
+> kept for provenance after the five hardware projects were consolidated into
+> `hardware-reversing`. Links have been redirected to the corresponding directory
+> in this repository. See the root [README](../README.md) for current instructions.
+
 # hydrotemp-aio-mac
 
 Driver macOS para el display AIO integrado en gabinetes **HydroTemp / PC Monitor All**,

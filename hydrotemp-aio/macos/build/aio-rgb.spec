@@ -1,7 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
+
+# SPECPATH is injected by PyInstaller and points at this file's directory
+# (hydrotemp-aio/macos/build). The ITE8297 controller lives under rgb-fusion/
+# since the five original repos were consolidated.
+SRC = os.path.normpath(
+    os.path.join(SPECPATH, '..', '..', '..', 'rgb-fusion', 'rgb_controller_ite8297.py')
+)
 
 a = Analysis(
-    ['/Users/rene/hydrotemp-aio-mac/rgb_controller.py'],
+    [SRC],
     pathex=[],
     binaries=[
         ('/usr/local/opt/hidapi/lib/libhidapi.0.15.0.dylib', '.'),

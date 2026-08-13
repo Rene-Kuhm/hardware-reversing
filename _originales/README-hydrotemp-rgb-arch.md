@@ -1,10 +1,15 @@
+> **Archived document.** This is the original README of the `hydrotemp-rgb-arch` repository,
+> kept for provenance after the five hardware projects were consolidated into
+> `hardware-reversing`. Links have been redirected to the corresponding directory
+> in this repository. See the root [README](../README.md) for current instructions.
+
 # HydroTemp RGB Arch
 
 ![Platform](https://img.shields.io/badge/platform-Arch%20Linux%20%7C%20CachyOS-1793D1?logo=arch-linux)
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Daemon for the HydroTemp AIO liquid cooler display and RGB Fusion keepalive for Arch Linux / CachyOS. Adapted from [Datos-xyz-hydrotemp](https://github.com/Rene-Kuhm/Datos-xyz-hydrotemp) and [Datos-RGB-Fusion-nixOS](https://github.com/Rene-Kuhm/Datos-RGB-Fusion-nixOS).
+Daemon for the HydroTemp AIO liquid cooler display and RGB Fusion keepalive for Arch Linux / CachyOS. Adapted from [Datos-xyz-hydrotemp](https://github.com/Rene-Kuhm/hardware-reversing/tree/main/hydrotemp-aio) and [Datos-RGB-Fusion-nixOS](https://github.com/Rene-Kuhm/hardware-reversing/tree/main/rgb-fusion).
 
 ## Overview
 
@@ -72,7 +77,7 @@ The keepalive script accepts environment variables with sensible defaults:
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/Rene-Kuhm/hydrotemp-rgb-arch.git
+git clone https://github.com/Rene-Kuhm/hardware-reversing.git
 ```
 
 2. Install dependencies:
@@ -114,8 +119,8 @@ systemctl --user enable --now rgb-init.service
 
 ## Related Projects
 
-- [Datos-xyz-hydrotemp](https://github.com/Rene-Kuhm/Datos-xyz-hydrotemp) — NixOS version with NVIDIA support and full protocol analysis
-- [Datos-RGB-Fusion-nixOS](https://github.com/Rene-Kuhm/Datos-RGB-Fusion-nixOS) — NixOS RGB Fusion module with reverse engineering docs
+- [Datos-xyz-hydrotemp](https://github.com/Rene-Kuhm/hardware-reversing/tree/main/hydrotemp-aio) — NixOS version with NVIDIA support and full protocol analysis
+- [Datos-RGB-Fusion-nixOS](https://github.com/Rene-Kuhm/hardware-reversing/tree/main/rgb-fusion) — NixOS RGB Fusion module with reverse engineering docs
 
 ## License
 

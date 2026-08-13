@@ -1,3 +1,8 @@
+> **Archived document.** This is the original README of the `Datos-xyz-hydrotemp` repository,
+> kept for provenance after the five hardware projects were consolidated into
+> `hardware-reversing`. Links have been redirected to the corresponding directory
+> in this repository. See the root [README](../README.md) for current instructions.
+
 # PC Monitor NixOS
 
 A NixOS daemon that sends hardware sensor data to the USB HID display with

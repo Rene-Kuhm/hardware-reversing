@@ -2,9 +2,21 @@
 set -euo pipefail
 
 VERSION="1.1.0"
-PROJECT_DIR="/Users/rene/hydrotemp-aio-mac"
-VENV="/Users/rene/monitor-env"
-BUILD_DIR="$PROJECT_DIR/build"
+
+# Paths resolved from this script's location, so the build works from any clone.
+BUILD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # hydrotemp-aio/macos/build
+PROJECT_DIR="$(cd "$BUILD_DIR/.." && pwd)"                  # hydrotemp-aio/macos
+REPO_ROOT="$(cd "$BUILD_DIR/../../.." && pwd)"              # repository root
+
+# Override with: VENV=/path/to/venv ./build.sh
+: "${VENV:=$HOME/monitor-env}"
+
+if [ ! -x "$VENV/bin/pip" ]; then
+    echo "build: no virtualenv at $VENV" >&2
+    echo "Create one with: python3 -m venv \"$VENV\" && \"$VENV/bin/pip\" install hid" >&2
+    echo "Or point VENV at an existing one: VENV=/path/to/venv $0" >&2
+    exit 1
+fi
 
 echo "=== AIO Display Driver + RGB Controller — Build DMG Installer ==="
 echo "Version: $VERSION"
@@ -80,7 +92,7 @@ mkdir -p "$DMG_STAGE"
 cp "$BUILD_DIR/AIO-Display-Driver.pkg" "$DMG_STAGE/"
 cp "$BUILD_DIR/uninstall.sh" "$DMG_STAGE/"
 chmod +x "$DMG_STAGE/uninstall.sh"
-cp "$PROJECT_DIR/README.md" "$DMG_STAGE/"
+cp "$REPO_ROOT/README.md" "$DMG_STAGE/"
 
 hdiutil create \
     -volname "AIO Display Driver" \

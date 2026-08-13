@@ -10,9 +10,15 @@
     <array>
         <!-- Python 3.14 desde python.org — no usar /usr/bin/python3 (es Python 3.9 de Xcode, no tiene hid) -->
         <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
-        <string>/Users/rene/monitor_macos.py</string>
-        <!-- Quita el comentario para activar log de sensores en cada ciclo: -->
-        <!-- <string>--verbose</string> -->
+        <!-- ADJUST THIS PATH: plists cannot expand variables, so point it at your
+             clone, e.g. /Users/<you>/hardware-reversing/hydrotemp-aio/macos/monitor_macos.py
+             For a variable-free setup, use the .pkg installer instead (build/build.sh),
+             which installs a self-contained binary under /usr/local/lib/aio-display. -->
+        <string>/Users/rene/hardware-reversing/hydrotemp-aio/macos/monitor_macos.py</string>
+        <!-- To log sensors on every cycle, add one more <string> entry below
+             containing the verbose flag (two dashes followed by "verbose").
+             It cannot be shown commented out here: XML comments may not
+             contain a double dash, which silently invalidates the whole plist. -->
     </array>
 
     <!-- Reiniciar automáticamente si el proceso muere -->
