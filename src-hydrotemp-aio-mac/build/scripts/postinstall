@@ -1,0 +1,26 @@
+#!/bin/bash
+set -e
+
+# Obtener el usuario de consola (el que hizo doble clic en el instalador)
+CONSOLE_USER=$(stat -f "%Su" /dev/console)
+CONSOLE_UID=$(id -u "$CONSOLE_USER")
+
+# ── AIO Display ─────────────────────────────────────────────────────
+LABEL_DISPLAY="com.rene.aio-display"
+PLIST_DISPLAY="/Library/LaunchAgents/com.rene.aio-display.plist"
+
+launchctl bootout gui/"$CONSOLE_UID"/"$LABEL_DISPLAY" 2>/dev/null || true
+chmod 644 "$PLIST_DISPLAY"
+chmod +x /usr/local/lib/aio-display/aio-display
+launchctl bootstrap gui/"$CONSOLE_UID" "$PLIST_DISPLAY"
+
+# ── AIO RGB ──────────────────────────────────────────────────────────
+LABEL_RGB="com.rene.aio-rgb"
+PLIST_RGB="/Library/LaunchAgents/com.rene.aio-rgb.plist"
+
+launchctl bootout gui/"$CONSOLE_UID"/"$LABEL_RGB" 2>/dev/null || true
+chmod 644 "$PLIST_RGB"
+chmod +x /usr/local/lib/aio-rgb/aio-rgb
+launchctl bootstrap gui/"$CONSOLE_UID" "$PLIST_RGB"
+
+exit 0

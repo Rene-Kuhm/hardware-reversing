@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.DS_Store
+*.log
+*.err
+monitor-env/
+.env
+build/dist/
+build/work/
+build/pkg-root/
+build/dmg-staging/
+build/*.pkg
+build/*.dmg
