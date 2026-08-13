@@ -1,67 +1,162 @@
 # hardware-reversing
 
-Reverse engineering y drivers en espacio de usuario para hardware de PC sin soporte oficial en Linux y macOS: pantallas AIO, iluminación RGB de placa base y controladoras de iluminación USB.
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20NixOS-1793D1)
+![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python)
+![Protocol](https://img.shields.io/badge/protocol-USB%20HID-orange)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-Todo el trabajo parte de capturas de tráfico USB/HID sobre los drivers propietarios de Windows, decodificación del protocolo, y reimplementación desde cero en Python.
+Userspace drivers for PC hardware with no official Linux or macOS support: AIO cooler displays, motherboard RGB lighting, and USB lighting controllers.
 
-## Dispositivos cubiertos
+Every driver here was built the same way — capture the USB/HID traffic of the proprietary Windows software, decode the protocol, and reimplement it from scratch in Python. The protocol analysis is documented in full, so the findings are useful even if you never run this code.
 
-| Dispositivo | Qué es | Protocolo | Linux | macOS | NixOS |
+## Devices
+
+| Device | What it is | Protocol | Linux | macOS | NixOS |
 |---|---|---|---|---|---|
-| **HydroTemp AIO** | Pantalla del disipador líquido (CPU, temperaturas, RPM) | HID `5131:2007`, reportes de 64 B | ✅ producción | ✅ | ✅ |
-| **RGB Fusion** | Iluminación de placa base Gigabyte (ITE8297) | HID vendor, DLL reversada | ✅ | ✅ | ✅ |
-| **Stream Station** | Controladora de iluminación USB | USB raw, protocolo propio | — | — | ✅ |
+| **HydroTemp AIO display** | Case display for CPU/GPU temps, fan and pump RPM | USB HID, VID `0x5131` PID `0x2007` (FBB), 65-byte reports @ 200 ms | ✅ production | ✅ | ✅ |
+| **RGB Fusion** | Gigabyte motherboard lighting (ITE8297) | Vendor HID, reversed from the official DLL | ✅ | ✅ | ✅ |
+| **Stream Station** | USB lighting controller | Raw USB, proprietary protocol | — | — | ✅ |
 
-## Documentación del reverse engineering
+Reference software analysed: `PC Monitor All.exe` (.NET 4.x / CyUSB) on Windows 11 Pro.
 
-Es la parte más reutilizable del repositorio: sirve aunque no uses este código.
+## Protocol findings
 
-- [`docs/hydrotemp-aio/AIO-Display-Protocol-Analysis.md`](docs/hydrotemp-aio/AIO-Display-Protocol-Analysis.md) — análisis completo del protocolo de la pantalla (24 KB)
-- [`docs/hydrotemp-aio/PROTOCOL_ANALYSIS.md`](docs/hydrotemp-aio/PROTOCOL_ANALYSIS.md) — estructura de los reportes HID
-- [`docs/hydrotemp-aio/IL_SENDDATA2_DECODED.md`](docs/hydrotemp-aio/IL_SENDDATA2_DECODED.md) — decodificación de `IL_SENDDATA2`
-- [`docs/rgb-fusion/ANALYSIS.md`](docs/rgb-fusion/ANALYSIS.md) — análisis de RGB Fusion
-- [`docs/rgb-fusion/DLL_EXPORTS.md`](docs/rgb-fusion/DLL_EXPORTS.md) — exports de la DLL propietaria
-- [`docs/rgb-fusion/ENUMS_AND_MODES.md`](docs/rgb-fusion/ENUMS_AND_MODES.md) — modos de efecto y enumeraciones
-- [`docs/stream-station/USB_PROTOCOL.md`](docs/stream-station/USB_PROTOCOL.md) — protocolo USB de Stream Station
+The three findings that cost the most time, in case they save yours:
 
-## Hallazgos destacados
+- **The display is not the device you first enumerate.** It exposes `VID 0x5131 / PID 0x2007`, easily confused with the CX wireless receiver on the same bus. You must select the vendor HID interface by `usage_page = 0xFF02`; matching the first HID interface lands you on the keyboard and every write returns `EPIPE`.
+- **Writes need a 65-byte buffer** — 64 bytes of payload plus the 1-byte `hidapi` report-ID prefix — to match the raw CyUSB transfer the Windows driver performs.
+- **`buf[9]` is the CPU temperature**, not the per-thread maximum as the packet layout suggests. Related: `buf[6]` (GPU power) must be `0` or the display refuses to render the real CPU temperature.
 
-- El display se expone como **`VID 0x5131 / PID 0x2007`**, no como el receptor inalámbrico CX que aparece primero al enumerar. Hay que seleccionar la interfaz HID de vendor por `usage_page` (`0xFF02`) o el kernel devuelve `EPIPE` al escribir sobre el teclado.
-- Las escrituras requieren un buffer de **65 bytes** (64 de carga útil + 1 de prefijo de `hidapi`), replicando la transferencia raw de CyUSB en Windows.
-- En el reporte de estado, **`buf[9]` es la temperatura de CPU**, no el máximo por hilo como parecía al principio. Y `buf[6]` (potencia de GPU) debe ir a 0 para que el display muestre la temperatura real de CPU.
+Full analysis:
 
-## Estructura
-
-```
-docs/                     Análisis de protocolo por dispositivo
-hydrotemp-aio/
-  monitor.py              ← implementación canónica (Linux, en producción)
-  linux/                  Unidades systemd y scripts de arranque
-  macos/                  monitor_macos.py, LaunchAgent e instaladores PKG/DMG
-  nixos/                  flake.nix y variante NixOS
-rgb-fusion/               rgb_fusion.py, controlador ITE8297, flake
-stream-station/           stream_station.py, flake
-_originales/              READMEs de los 5 repos originales
-```
-
-## Qué versión usar
-
-`hydrotemp-aio/monitor.py` es la **canónica**: es la que corre en producción sobre CachyOS y la más reciente (mayo 2026). Frente a la variante de NixOS añade el escaneo de `fan*_input` en lugar de solo `fan1_input`, y distingue "ventilador parado" (0 RPM) de "no se encontró ventilador".
-
-`hydrotemp-aio/macos/monitor_macos.py` es una implementación aparte, no una copia: macOS usa otras APIs de sistema para leer sensores.
-
-## Procedencia
-
-Este repositorio unifica cinco repos anteriores **conservando su historial completo** (41 commits). El recorrido del reverse engineering está en los mensajes de commit y es parte del valor:
-
-| Repo original | Aporte |
+| Document | Contents |
 |---|---|
-| `hydrotemp-rgb-arch` | Implementación canónica de Linux (mayo 2026) |
-| `Datos-xyz-hydrotemp` | Protocolo real del display, docs de reversing |
-| `hydrotemp-aio-mac` | Puerto a macOS, instaladores, controlador ITE8297 |
-| `Datos-RGB-Fusion-nixOS` | Reversing de RGB Fusion + módulo NixOS |
-| `Datos-Stream-Station-nixos` | Reversing de Stream Station + módulo NixOS |
+| [`docs/hydrotemp-aio/AIO-Display-Protocol-Analysis.md`](docs/hydrotemp-aio/AIO-Display-Protocol-Analysis.md) | Complete display protocol (24 KB) |
+| [`docs/hydrotemp-aio/PROTOCOL_ANALYSIS.md`](docs/hydrotemp-aio/PROTOCOL_ANALYSIS.md) | HID report structure |
+| [`docs/hydrotemp-aio/IL_SENDDATA2_DECODED.md`](docs/hydrotemp-aio/IL_SENDDATA2_DECODED.md) | `IL_SENDDATA2` decoding |
+| [`docs/rgb-fusion/ANALYSIS.md`](docs/rgb-fusion/ANALYSIS.md) | RGB Fusion analysis |
+| [`docs/rgb-fusion/DLL_EXPORTS.md`](docs/rgb-fusion/DLL_EXPORTS.md) | Proprietary DLL exports |
+| [`docs/rgb-fusion/ENUMS_AND_MODES.md`](docs/rgb-fusion/ENUMS_AND_MODES.md) | Effect modes and enumerations |
+| [`docs/stream-station/USB_PROTOCOL.md`](docs/stream-station/USB_PROTOCOL.md) | Stream Station USB protocol |
 
-## Licencia
+## Requirements
 
-MIT — ver [LICENSE](LICENSE).
+- Python 3.10+
+- `hidapi`
+- `openrgb` (only for RGB keepalive on Linux)
+
+## Installation — Linux (Arch / CachyOS)
+
+```bash
+sudo pacman -S hidapi openrgb
+```
+
+Copy the launcher scripts and enable the user services:
+
+```bash
+cp hydrotemp-aio/linux/bin/*.sh ~/bin/
+chmod +x ~/bin/hydrotemp-start.sh ~/bin/rgb-keepalive.sh
+
+mkdir -p ~/.config/systemd/user/
+cp hydrotemp-aio/linux/systemd/*.service ~/.config/systemd/user/
+
+systemctl --user daemon-reload
+systemctl --user enable --now hydrotemp.service
+systemctl --user enable --now rgb-init.service
+```
+
+## Installation — macOS
+
+Builds a signed `.pkg` / `.dmg` and installs a LaunchAgent that starts the driver at login:
+
+```bash
+cd hydrotemp-aio/macos/build
+./build.sh
+```
+
+Tested on Intel Mac (Xeon W / Mac Pro) and Hackintosh.
+
+## Installation — NixOS
+
+Each device ships its own flake:
+
+```bash
+nix run ./hydrotemp-aio/nixos
+nix run ./rgb-fusion/nixos
+nix run ./stream-station/nixos
+```
+
+## Usage
+
+```bash
+python3 hydrotemp-aio/monitor.py --verbose            # run with sensor logging
+python3 hydrotemp-aio/monitor.py --dry-run --verbose  # no HID device required
+```
+
+Sensors read from `sysfs`:
+
+| Metric | Source |
+|---|---|
+| CPU package temperature | `coretemp` |
+| CPU usage | `/proc/stat` |
+| GPU temperature and usage | `amdgpu` (NVIDIA supported in the NixOS variant) |
+| Fan RPM | `hwmon/*/fan*_input` |
+| Pump RPM | `nct6775` / `nct6798` / `it87` |
+
+### RGB keepalive
+
+Gigabyte boards reset their lighting to default periodically. The keepalive re-applies the OpenRGB profile on an interval, configurable by environment variable:
+
+| Variable | Default | Description |
+|---|---|---|
+| `RGB_DEVICE_ID` | `1` | OpenRGB motherboard device index |
+| `RGB_MEMORY_DEVICE_ID` | `0` | OpenRGB memory device index |
+| `RGB_MODE` | `static` | RGB mode (static, direct, …) |
+| `RGB_COLOR` | `FFFFFF` | Hex colour value |
+| `RGB_BRIGHTNESS` | `100` | Brightness percentage |
+| `RGB_ARG_SIZE` | `30` | ARGB zone LED count (D_LED1 / D_LED2) |
+| `RGB_INTERVAL_SEC` | `20` | Re-apply interval in seconds |
+
+## Hardware tested
+
+| Component | Device |
+|---|---|
+| AIO display | HydroTemp / PC Monitor All case display — VID `5131` PID `2007` (FBB) |
+| Motherboard RGB | Gigabyte Z790 AORUS (ITE8297) |
+| Systems | Arch Linux / CachyOS, NixOS, macOS (Intel) |
+
+## Repository layout
+
+```
+docs/                     Protocol analysis, per device
+hydrotemp-aio/
+  monitor.py              canonical implementation (Linux, in production)
+  linux/                  systemd units and launcher scripts
+  macos/                  monitor_macos.py, LaunchAgent, PKG/DMG installers
+  nixos/                  flake.nix and NixOS variant
+rgb-fusion/               rgb_fusion.py, ITE8297 controller, flake
+stream-station/           stream_station.py, flake
+_originales/              READMEs of the five original repositories
+```
+
+### Which implementation to use
+
+`hydrotemp-aio/monitor.py` is canonical — it is the version running in production on CachyOS and the most recent (May 2026). Compared to the NixOS variant it scans `fan*_input` instead of only `fan1_input`, and distinguishes "fan present but stopped" (0 RPM) from "no fan found".
+
+`hydrotemp-aio/macos/monitor_macos.py` is a separate implementation, not a copy: macOS reads sensors through different system APIs.
+
+## Provenance
+
+This repository consolidates five earlier repos **with their full history preserved** (41 commits). The reverse-engineering process lives in the commit messages and is part of the value.
+
+| Original repository | Contribution |
+|---|---|
+| `hydrotemp-rgb-arch` | Canonical Linux implementation (May 2026) |
+| `Datos-xyz-hydrotemp` | Real display protocol, reversing docs |
+| `hydrotemp-aio-mac` | macOS port, installers, ITE8297 controller |
+| `Datos-RGB-Fusion-nixOS` | RGB Fusion reversing + NixOS module |
+| `Datos-Stream-Station-nixos` | Stream Station reversing + NixOS module |
+
+## License
+
+MIT — see [LICENSE](LICENSE).
