@@ -1,0 +1,54 @@
+# ---------------------------------------------------------------
+# Fusion de los .gitignore de los 5 repos originales.
+# OJO: no usar "build/" a secas. hydrotemp-aio/macos/build/ contiene
+# scripts versionados (build.sh, specs, plists, postinstall/preinstall).
+# Por eso los artefactos de macOS se ignoran por ruta concreta.
+# ---------------------------------------------------------------
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.pytest_cache/
+.venv/
+.venv*/
+venv/
+monitor-env/
+
+# Entorno local
+.env
+.env.*
+!.env.example
+config.json
+config.toml
+
+# Logs
+*.log
+*.err
+
+# Artefactos de empaquetado macOS (los scripts SI se versionan)
+hydrotemp-aio/macos/build/dist/
+hydrotemp-aio/macos/build/work/
+hydrotemp-aio/macos/build/pkg-root/
+hydrotemp-aio/macos/build/dmg-staging/
+hydrotemp-aio/macos/build/*.pkg
+hydrotemp-aio/macos/build/*.dmg
+
+# Salida de compilacion generica (raiz)
+/dist/
+/build/
+
+# Nix
+result
+result-*
+
+# Editores
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
