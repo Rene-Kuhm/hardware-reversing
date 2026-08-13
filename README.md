@@ -147,7 +147,7 @@ _originales/              READMEs of the five original repositories
 
 ## Provenance
 
-This repository consolidates five earlier repos **with their full history preserved** (41 commits). The reverse-engineering process lives in the commit messages and is part of the value.
+This repository consolidates five earlier repositories **with their full history preserved** — every original commit, tag and release was carried over before the originals were removed. The reverse-engineering process lives in the commit messages and is part of the value: the display protocol was decoded one failed HID write at a time.
 
 | Original repository | Contribution |
 |---|---|
