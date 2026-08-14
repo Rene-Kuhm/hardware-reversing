@@ -1,4 +1,4 @@
-# hardware-reversing
+# AIO cooler displays, Gigabyte RGB Fusion and USB lighting on Linux and macOS
 
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20NixOS-1793D1)
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python)
