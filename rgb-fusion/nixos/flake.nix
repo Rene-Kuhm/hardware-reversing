@@ -184,7 +184,7 @@
           pname   = "rgb-fusion";
           version = "1.0.0";
 
-          src = ./.;
+          src = ./..;
 
           nativeBuildInputs = [ pkgs.makeWrapper ];
           buildInputs       = [ pythonEnv ];

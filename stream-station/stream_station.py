@@ -181,7 +181,15 @@ class StreamStationDevice:
                 return bytes(data)
         except OSError as e:
             logging.error("Error leyendo HID: %s", e)
-            self._dev = None
+            # El descriptor queda inutilizable: cerrálo bajo el lock para no
+            # leakear el handle, y marcá `self._dev = None` para forzar
+            # reconexión en el siguiente loop.
+            with self._lock:
+                try:
+                    self._dev.close()
+                except Exception:
+                    pass
+                self._dev = None
         return None
 
     def send_image(self, button_index: int, jpeg_data: bytes) -> bool:
