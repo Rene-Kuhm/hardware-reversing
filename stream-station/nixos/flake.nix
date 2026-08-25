@@ -20,7 +20,7 @@
         streamStationPkg = pkgs.stdenv.mkDerivation {
           name    = "stream-station-nixos";
           version = "1.0.0";
-          src     = ./.;
+          src     = ./..;
 
           buildInputs = [ pythonEnv pkgs.hidapi ];
 

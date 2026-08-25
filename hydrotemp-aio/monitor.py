@@ -81,8 +81,19 @@ def _read_float(path: str, divisor: float = 1.0) -> Optional[float]:
 
 
 def _find_hwmon_driver(driver_name: str) -> Optional[str]:
+    # El nombre exacto del hwmon ("it8689") rara vez coincide con el nombre
+    # genérico del driver ("it87") — pero todos los chips ITE comparten
+    # prefijo "it". Para nombres ITE matcheamos cualquier hwmon "it*";
+    # para el resto, match exacto o prefijo de 4 chars.
+    if driver_name.startswith("it"):
+        prefixes = {driver_name, "it"}
+    else:
+        prefixes = {driver_name, driver_name[:4]}
     for p in glob.glob("/sys/class/hwmon/hwmon*/name"):
-        if _read_file(p) == driver_name:
+        name = _read_file(p)
+        if name is None:
+            continue
+        if any(name == pref or name.startswith(pref) for pref in prefixes):
             return os.path.dirname(p)
     return None
 

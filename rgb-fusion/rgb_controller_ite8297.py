@@ -87,8 +87,13 @@ def save_color(r: int, g: int, b: int):
 def set_rgb(r: int, g: int, b: int, retries: int = 3) -> bool:
     """
     Configura todas las zonas de la motherboard al color (r, g, b).
-    Protocolo ITE8297: feature report 0xCC, effect=0x01 (estático).
+    Protocolo ITE8297 HID: report 0xCC, effect=0x01 (estático).
+
+    En Linux/NixOS usamos `write()` (HID Output Report, lo que usa OpenRGB).
+    En macOS el firmware también acepta `send_feature_report()` (HID Feature
+    Report) — probamos ambos para portabilidad.
     """
+    last_err = None
     for attempt in range(retries):
         try:
             dev = hid.Device(VENDOR_ID, PRODUCT_ID)
@@ -107,14 +112,22 @@ def set_rgb(r: int, g: int, b: int, retries: int = 3) -> bool:
                 pkt[7] = r             # Red
                 pkt[8] = g             # Green
                 pkt[9] = b             # Blue
-                dev.send_feature_report(bytes(pkt))
+                try:
+                    n = dev.write(bytes(pkt))
+                except Exception:
+                    # Fallback para macOS donde OpenRGB no aplica pero el
+                    # firmware sí responde a Feature Reports.
+                    n = dev.send_feature_report(bytes(pkt))
                 time.sleep(0.02)
 
             # Apply
             apply_pkt = bytearray(64)
             apply_pkt[0] = REPORT_ID
             apply_pkt[1] = APPLY_ZONE
-            dev.send_feature_report(bytes(apply_pkt))
+            try:
+                dev.write(bytes(apply_pkt))
+            except Exception:
+                dev.send_feature_report(bytes(apply_pkt))
 
             dev.close()
             log.info("Color aplicado: #%02X%02X%02X", r, g, b)

@@ -62,11 +62,20 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
-import ctypes as _ctypes
-try:
-    _ctypes.cdll.LoadLibrary('/usr/local/lib/libhidapi.dylib')
-except OSError:
-    pass
+# Preload libhidapi dylib so that `import hid` finds the C library. We try the
+# common Homebrew locations for both Intel and Apple Silicon macOS — without
+# this the LaunchAgent often fails with "library not found" on first boot.
+for _hidapi_path in (
+    '/usr/local/lib/libhidapi.dylib',     # Intel Mac (Homebrew)
+    '/opt/homebrew/lib/libhidapi.dylib', # Apple Silicon (Homebrew)
+    '/usr/local/lib/libhidapi.0.dylib',
+    '/opt/homebrew/lib/libhidapi.0.dylib',
+):
+    try:
+        ctypes.cdll.LoadLibrary(_hidapi_path)
+        break
+    except OSError:
+        continue
 import hid
 import psutil
 
