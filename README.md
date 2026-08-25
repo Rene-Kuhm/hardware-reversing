@@ -78,6 +78,8 @@ Tested on Intel Mac (Xeon W / Mac Pro) and Hackintosh.
 
 ## Installation — NixOS
 
+**Option A: Using flakes (recommended)**
+
 Each device ships its own flake:
 
 ```bash
@@ -85,6 +87,14 @@ nix run ./hydrotemp-aio/nixos
 nix run ./rgb-fusion/nixos
 nix run ./stream-station/nixos
 ```
+
+**Option B: Manual configuration**
+
+See [`NIXOS.md`](NIXOS.md) for complete instructions including:
+- `configuration.nix` setup (kernel modules, udev rules, systemd services)
+- RGB control with OpenRGB (IT5701 chip, not IT8297)
+- Webcam V4L2 configuration
+- Troubleshooting guide
 
 ## Usage
 
@@ -121,8 +131,11 @@ Gigabyte boards reset their lighting to default periodically. The keepalive re-a
 
 | Component | Device |
 |---|---|
-| AIO display | HydroTemp / PC Monitor All case display — VID `5131` PID `2007` (FBB) |
-| Motherboard RGB | Gigabyte Z790 AORUS (ITE8297) |
+| AIO display | HydroTemp / PC Monitor All — VID `5131` PID `2007` (FBB) |
+| Motherboard RGB | Gigabyte Z790 AORUS ELITE AX (IT5701) |
+| RAM RGB | HyperX Fury RGB (2 slots, 5 LEDs each) |
+| Super I/O | IT8689E (fans, voltages, temps via `it87`) |
+| Webcam | Logitech MX Brio (`046d:0944`) |
 | Systems | Arch Linux / CachyOS, NixOS, macOS (Intel) |
 
 ## Repository layout
